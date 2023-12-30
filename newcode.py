@@ -51,7 +51,7 @@ def extract_names(url):
 
     names = []
     for scientist_section in scientist_list:
-        anchor_tag = scientist_section.find(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'])
+        anchor_tag = scientist_section.find('a')
         if anchor_tag:
             name = anchor_tag.get_text()
             names.append(name)
@@ -88,6 +88,22 @@ def calculate_text_similarity(education_texts, user_query):
 
     # Επιστροφή του επιστήμονα και του κειμένου εκπαίδευσης με το μέγιστο ποσοστό ομοιότητας
     return max_similar_scientist, max_similar_education, max_similarity
+
+
+def filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters):
+    initial_range = initial_letters.upper()
+    filtered_indices = []
+
+    for letter in range(ord(initial_range[0]), ord(initial_range[-1]) + 1):
+        sample = np.array([[min_awards, min_dblp, letter - 64]])
+        closest_indices = kdt.query_radius(sample, r=np.inf)[0]
+        filtered_indices.extend([index for index in closest_indices if
+                                 combined_data[index][0] >= min_awards and
+                                 combined_data[index][1] >= min_dblp and
+                                 combined_data[index][2] == letter - 64])
+
+    filtered_scientists = [data[index][0] for index in filtered_indices]
+    return filtered_scientists
 
 
 # Αρχικό URL
@@ -170,10 +186,8 @@ while True:
     min_awards = int(input("Δώσε το ελάχιστο αριθμό βραβείων: "))
     min_dblp = int(input("Δώσε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
     user_query = input("Δώσε το ερώτημα που θέλεις να αναζητήσεις στο κείμενο εκπαίδευσης: ")
-    filtered_indices = kdt.query_radius(np.array([[min_awards, min_dblp, ord(initial_letters[0].upper()) - 64]]), r=np.inf, return_distance=False)[0]
-    filtered_scientists = [data[i][0] for i in filtered_indices if initial_letters[0].upper() <= data[i][0][0].upper() <= initial_letters[2].upper()] #and data[i][1] >= min_awards and data[i][2] >= min_dblp prepei na ftiaxthei auto 
-
-    print(f"Επιστήμονες που τα ονόματά τους ξεκινούν με '{initial_letters}' και έχουν πάνω από {min_awards} βραβεία και δημοσιεύσεις στο DBLP:")
+    filtered_scientists = filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters)
+    
     print(filtered_scientists)
     filtered_education_texts = []
     for scientist in filtered_scientists:
