@@ -48,13 +48,31 @@ def get_awards_info(url):
 def get_dblp_publications(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
-    publications_section = soup.find('span', {'id': re.compile(r'.*publications.*')})
+
+    # Βρίσκει το στοιχείο <span> με το id "Publications"
+    publications_section = soup.find('span', {'id': re.compile(r'.*publications.*', re.IGNORECASE)})
 
     if publications_section:
-        publications_list = publications_section.find_next('ul')
-        if publications_list:
-            publications_count = len(publications_list.find_all('li'))
-            return publications_count
+        # Βρίσκει όλα τα επόμενα στοιχεία έως το επόμενο <h2> ή το τέλος της σελίδας
+        elements_after_publications = publications_section.find_all_next()
+
+        # Αρχικοποίηση του μετρητή δημοσιεύσεων
+        publications_count = 0
+
+        for element in elements_after_publications:
+            if element.name == 'li':
+                # Εάν το επόμενο στοιχείο είναι ένα '</li>', τότε αυξάνουμε τον μετρητή κατά 1
+                if element.find_next().name == '/li':
+                    publications_count += 1
+            elif element.name == 'ul':
+                # Αυξάνει τον μετρητή για κάθε <li> που βρίσκεται μέσα στο <ul>
+                li_elements = element.find_all('li')
+                publications_count += len(li_elements)
+            elif element.name == 'h2':
+                # Σταματάει τον έλεγχο όταν φτάσει στο επόμενο <h2>
+                break
+
+        return publications_count
 
     return None
 
