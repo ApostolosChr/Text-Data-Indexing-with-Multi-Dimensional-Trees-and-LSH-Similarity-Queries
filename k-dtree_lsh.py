@@ -7,7 +7,7 @@ import nltk
 from sklearn.neighbors import KDTree
 from datasketch import MinHash, MinHashLSH
 from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords   # Να βάλω δίαστημα στο dblp 4o να ρυθμίσω έτσι ώστε άμα δεν βρίσκει κάτι να του εμφανίζω μήνυμα δεν βρέθηκε τίποτα και να συνεχίζει να τον ρωτάει και 5ο ένα πιο εύχρηστο τρόπο να λαμβάνει education, awards, DBLP,....
+from nltk.corpus import stopwords   #3ο Να βάλω δίαστημα στο dblp 4o SOS να ρυθμίσω έτσι ώστε άμα δεν βρίσκει κάτι να του εμφανίζω μήνυμα δεν βρέθηκε τίποτα και να συνεχίζει να τον ρωτάει και 5ο ένα πιο εύχρηστο τρόπο να λαμβάνει education, awards, DBLP,....
 nltk.download('punkt') 
 nltk.download('stopwords')  # Κατέβασε τα δεδομένα για τις stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -44,7 +44,7 @@ def get_awards_info(url):
     return None
 
 
-
+#πρέπει να το αλλάξω σε όλους 
 def get_dblp_publications(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -228,23 +228,37 @@ print(combined_data)
 kdt = KDTree(combined_data, leaf_size=30, metric='euclidean')
 
 while True:
-    initial_letters = input("Δώσε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ")
+    initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων στα λατινικά (π.χ., 'A-D'): ").upper()
     
     if initial_letters.lower() == 'exit':
         break
-
-    min_awards = int(input("Δώσε το ελάχιστο αριθμό βραβείων: "))
-    min_dblp = int(input("Δώσε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
-    user_query = input("Δώσε το ερώτημα που θέλεις να αναζητήσεις στο κείμενο εκπαίδευσης: ")
-    filtered_scientists = filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters)
     
-    print(filtered_scientists)
+    while not re.match(r'^[A-Z]-[A-Z]$', initial_letters):
+        print("Το διάστημα πρέπει να έχει τη μορφή 'A-D' στα λατινικά.")
+        initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ").upper()
+
+    min_awards = int(input("Δώστε το ελάχιστο αριθμό βραβείων: "))
+    min_dblp = int(input("Δώστε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
+    
+    # Εκτύπωση ονομάτων επιστημόνων που πληρούν τα κριτήρια
+    filtered_scientists = filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters)
+    if not filtered_scientists:
+        print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")
+        continue
+    else:
+        print("Οι επιστήμονες που πληρούν τα κριτήρια είναι:")
+        print(filtered_scientists)
+
+    # Εισαγωγή του ερωτήματος από τον χρήστη
+    user_query = input("Δώστε το ερώτημα που θέλετε να αναζητήσετε σχετικά με την εκπέδευση των επιστημόνων: ")
+    
+    # Φιλτράρισμα εκπαιδευτικών κειμένων και υπολογισμός ομοιότητας
     filtered_education_texts = []
     for scientist in filtered_scientists:
         education_texts = [edu_info for name, edu_info in names_education if name == scientist]
         filtered_education_texts.extend(education_texts)
 
-    threshold = 0.005  # Ορίστε το όριο ομοιότητας
+    threshold = 0.5  # Ορίστε το όριο ομοιότητας
     result, similarity_scores = calculate_text_similarity(filtered_education_texts, user_query, threshold=threshold)
 
     if not result:
