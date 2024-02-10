@@ -7,7 +7,7 @@ import nltk
 from sklearn.neighbors import KDTree
 from datasketch import MinHash, MinHashLSH
 from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords   #3ο Να βάλω δίαστημα στο dblp 4o SOS να ρυθμίσω έτσι ώστε άμα δεν βρίσκει κάτι να του εμφανίζω μήνυμα δεν βρέθηκε τίποτα και να συνεχίζει να τον ρωτάει και 5ο ένα πιο εύχρηστο τρόπο να λαμβάνει education, awards, DBLP,....
+from nltk.corpus import stopwords   #3ο Να βάλω δίαστημα στο dblp 
 nltk.download('punkt') 
 nltk.download('stopwords')  # Κατέβασε τα δεδομένα για τις stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -48,33 +48,16 @@ def get_awards_info(url):
 def get_dblp_publications(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
+    matches_element = soup.find("p", id="completesearch-info-matches")
+    if matches_element:
+        # Αφαιρούμε τα κόμματα από το κείμενο και μετατρέπουμε σε ακέραιο
+        matches_text = matches_element.text.split()[1].replace(",", "")
+        try:
+            matches = int(matches_text)
+            return matches
+        except ValueError:
+            pass
 
-    # Βρίσκει το στοιχείο <span> με το id "Publications"
-    publications_section = soup.find('span', {'id': re.compile(r'.*publications.*', re.IGNORECASE)})
-
-    if publications_section:
-        # Βρίσκει όλα τα επόμενα στοιχεία έως το επόμενο <h2> ή το τέλος της σελίδας
-        elements_after_publications = publications_section.find_all_next()
-
-        # Αρχικοποίηση του μετρητή δημοσιεύσεων
-        publications_count = 0
-
-        for element in elements_after_publications:
-            if element.name == 'li':
-                # Εάν το επόμενο στοιχείο είναι ένα '</li>', τότε αυξάνουμε τον μετρητή κατά 1
-                if element.find_next().name == '/li':
-                    publications_count += 1
-            elif element.name == 'ul':
-                # Αυξάνει τον μετρητή για κάθε <li> που βρίσκεται μέσα στο <ul>
-                li_elements = element.find_all('li')
-                publications_count += len(li_elements)
-            elif element.name == 'h2':
-                # Σταματάει τον έλεγχο όταν φτάσει στο επόμενο <h2>
-                break
-
-        return publications_count
-
-    return None
 
 def calculate_text_similarity(education_texts, user_query, threshold):
     vectorizer = TfidfVectorizer()
@@ -156,11 +139,12 @@ scientist_count = 0
 for initial, scientists in names_list.items():
     for name in scientists:
     
-        if scientist_count >= 10:
+        if scientist_count >= 25:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
         scientist_url = f'https://en.wikipedia.org/wiki/{formatted_name}'
+        dblp_url =  f'https://dblp.org/search/publ?q=author:{formatted_name}'
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
         education_section = soup.find('span', {'id': re.compile(r'.*ducation.*')})
@@ -177,7 +161,7 @@ for initial, scientists in names_list.items():
 
         education_info = get_education_info(scientist_url)
         awards_count = get_awards_info(scientist_url)
-        dblp_publications = get_dblp_publications(scientist_url)
+        dblp_publications = get_dblp_publications(dblp_url)
 
         if education_info:
             data.append([name, awards_count, dblp_publications])
@@ -258,7 +242,7 @@ while True:
         education_texts = [edu_info for name, edu_info in names_education if name == scientist]
         filtered_education_texts.extend(education_texts)
 
-    threshold = 0.5  # Ορίστε το όριο ομοιότητας
+    threshold = 0.025  # Ορίστε το όριο ομοιότητας
     result, similarity_scores = calculate_text_similarity(filtered_education_texts, user_query, threshold=threshold)
 
     if not result:
