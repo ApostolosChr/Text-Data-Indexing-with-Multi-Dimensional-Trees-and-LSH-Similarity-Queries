@@ -50,40 +50,18 @@ def get_awards_info(url):
     return None
 
 
-'''Purpose: Extracts the number of publications from a given URL.
-Input: URL of a scientist's Wikipedia page.
-Output: Returns the number of publications as an integer or None if not found.'''
-
 def get_dblp_publications(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
-
-    # Βρίσκει το στοιχείο <span> με το id "Publications"
-    publications_section = soup.find('span', {'id': re.compile(r'.*publications.*', re.IGNORECASE)})
-
-    if publications_section:
-        # Βρίσκει όλα τα επόμενα στοιχεία έως το επόμενο <h2> ή το τέλος της σελίδας
-        elements_after_publications = publications_section.find_all_next()
-
-        # Αρχικοποίηση του μετρητή δημοσιεύσεων
-        publications_count = 0
-
-        for element in elements_after_publications:
-            if element.name == 'li':
-                # Εάν το επόμενο στοιχείο είναι ένα '</li>', τότε αυξάνουμε τον μετρητή κατά 1
-                if element.find_next().name == '/li':
-                    publications_count += 1
-            elif element.name == 'ul':
-                # Αυξάνει τον μετρητή για κάθε <li> που βρίσκεται μέσα στο <ul>
-                li_elements = element.find_all('li')
-                publications_count += len(li_elements)
-            elif element.name == 'h2':
-                # Σταματάει τον έλεγχο όταν φτάσει στο επόμενο <h2>
-                break
-
-        return publications_count
-
-    return None
+    matches_element = soup.find("p", id="completesearch-info-matches")
+    if matches_element:
+        # Αφαιρούμε τα κόμματα από το κείμενο και μετατρέπουμε σε ακέραιο
+        matches_text = matches_element.text.split()[1].replace(",", "")
+        try:
+            matches = int(matches_text)
+            return matches
+        except ValueError:
+            pass
 
 
 def calculate_text_similarity(education_texts, user_query, threshold):
@@ -185,11 +163,12 @@ scientist_count = 0
 for initial, scientists in names_list.items():
     for name in scientists:
         
-        if scientist_count >= 5:
+        if scientist_count >= 10:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
         scientist_url = f'https://en.wikipedia.org/wiki/{formatted_name}'
+        dblp_url =  f'https://dblp.org/search/publ?q=author:{formatted_name}'
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
         education_section = soup.find('span', {'id': re.compile(r'.*ducation.*')})
@@ -205,7 +184,7 @@ for initial, scientists in names_list.items():
 
         education_info = get_education_info(scientist_url)
         awards_count = get_awards_info(scientist_url)
-        dblp_publications = get_dblp_publications(scientist_url)
+        dblp_publications = get_dblp_publications(dblp_url)
 
 
         if education_info:
