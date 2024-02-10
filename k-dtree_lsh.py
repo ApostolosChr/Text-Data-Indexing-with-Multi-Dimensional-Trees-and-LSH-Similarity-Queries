@@ -44,13 +44,12 @@ def get_awards_info(url):
     return None
 
 
-#πρέπει να το αλλάξω σε όλους 
+ 
 def get_dblp_publications(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
     matches_element = soup.find("p", id="completesearch-info-matches")
     if matches_element:
-        # Αφαιρούμε τα κόμματα από το κείμενο και μετατρέπουμε σε ακέραιο
         matches_text = matches_element.text.split()[1].replace(",", "")
         try:
             matches = int(matches_text)
