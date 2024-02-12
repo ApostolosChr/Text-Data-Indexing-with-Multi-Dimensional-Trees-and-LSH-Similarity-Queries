@@ -135,6 +135,24 @@ def filter_by_initial_letters(combined_data, initial_letters):
 def filter_by_quadtree(qtree, min_awards, min_dblp):
     filtered_scientists_names = []
 
+    '''
+    Αποτρέπουμε να φιλτραριστούν επιστήμονες που βρίσκονται στο όρια του overlap_bbox λόγω των max_awards και max_dblp.
+
+        Αν min_dblp > max_dblp και min_awards > max_awards
+        Τότε αν υπάρχει ένας επιστήμονας όπου scientist_awards = max_awards και scientist_dblp = max_dblp θα φιλτραριστεί, οπότε το αποτρέπουμε.
+
+        Αν min_dblp > max_dblp
+        Τότε αν υπάρχει επιστήμονας όπου scientist_awards > min_awards, και scientist_dblp = max_dblp, τότε επίσης θα φιλτραριστεί.
+
+        Αν min_awards > max_awards
+        Τότε αν υπάρχει επιστήμονας όπου scientist_dblp > min_dblp, και scientist_awards = max_awards, τότε επίσης θα φιλτραριστεί.
+
+    Εμάς, είτε min_dblp > max_dblp ή min_awards > max_awards, πρέπει να μην επιστρέφεται τίποτα
+    '''
+
+    if min_dblp > max_dblp or min_awards > max_awards:
+        return filtered_scientists_names
+
     overlap_bbox = (min_awards, min_dblp, max_awards, max_dblp)
     filtered_scientists_quadtree = qtree.intersect(overlap_bbox)
 
@@ -162,7 +180,7 @@ scientist_count = 0
 for initial, scientists in names_list.items():
     for name in scientists:
         
-        if scientist_count >= 10:
+        if scientist_count >= 7:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
@@ -246,12 +264,16 @@ max_awards = np.nanmax(awards_dblp_data[:, 0])
 max_dblp = np.nanmax(awards_dblp_data[:, 1])
 
 
-
 while True:
-    initial_letters = input("\nΔώσε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ")
+    initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων στα λατινικά (π.χ., 'A-D'): ").upper()
     
     if initial_letters.lower() == 'exit':
         break
+
+    while not re.match(r'^[A-Z]-[A-Z]$', initial_letters):
+        print("Το διάστημα πρέπει να έχει τη μορφή 'A-D' στα λατινικά.")
+        initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ").upper()
+
 
     # First of all, filter the scientists by the given initial letters:
     filtered_scientists_initial = filter_by_initial_letters(combined_data, initial_letters)
@@ -264,6 +286,7 @@ while True:
         awards, dblp, scientist_initial = scientist_data[0], scientist_data[1], scientist_data[2]
         bounding_box = (awards, dblp, awards, dblp)
         qtree.insert(scientist_data, bounding_box)
+        
         #print("\n", scientist_data, awards, dblp, scientist_initial, "\n")
         #print(bounding_box)
 
@@ -273,14 +296,20 @@ while True:
 
     # Then, filter the scientists by the given min_awards and min_dblp:
     filtered_scientists_final = filter_by_quadtree(qtree, min_awards, min_dblp)
-    print("The filtered scientists are: ", filtered_scientists_final)
 
+    if not filtered_scientists_final:
+        print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")
+        continue
 
+    print("Οι επιστήμονες που πληρούν τα κριτήρια είναι:", filtered_scientists_final)
+
+    # Φιλτράρισμα εκπαιδευτικών κειμένων και υπολογισμός ομοιότητας
     filtered_education_texts = []
     for scientist in filtered_scientists_final:
         education_texts = [edu_info for name, edu_info in names_education if name == scientist]
         filtered_education_texts.extend(education_texts)
 
+    # Εισαγωγή του ερωτήματος από τον χρήστη
     user_query = input("\nΔώσε το ερώτημα που θέλεις να αναζητήσεις στο κείμενο εκπαίδευσης: ")
 
     threshold = 0.005  # Ορίστε το όριο ομοιότητας
