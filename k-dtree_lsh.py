@@ -18,11 +18,14 @@ from collections import defaultdict
 def get_education_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
-    education_section = soup.find('span', {'id': re.compile(r'.*ducation.*')})
+    
+    # Αναζήτηση εκπαιδευτικής ενότητας με βάση τις συνώνυμες λέξεις
+    education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
 
     if education_section:
+        # Αν βρέθηκε η εκπαιδευτική ενότητα, προχωρήστε στην ανάκτηση των πληροφοριών
         try:
-            education_info = education_section.find_next('p').get_text()
+            education_info = re.sub(r'\[\D*\d+\]', '', education_section.find_next('p').get_text())
             return education_info.strip()
         except AttributeError:
             return None
@@ -33,7 +36,8 @@ def get_education_info(url):
 def get_awards_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
-    honors_awards_section = soup.find('span', {'id': re.compile(r'.*Award.*')}) #πρέπει να βρώ πώς θα τα αναζητίσω τα awards 
+    honors_awards_section = soup.find(re.compile(r'(span|h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(honors|awards|Achievements|Recognition|Prizes)', re.IGNORECASE))
+
 
     if honors_awards_section:
         awards_list = honors_awards_section.find_next('ul')
@@ -42,6 +46,7 @@ def get_awards_info(url):
             return awards_count
 
     return None
+
 
 
  
@@ -78,6 +83,7 @@ def filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters)
 
     for letter in range(ord(initial_range[0]), ord(initial_range[-1]) + 1):
         sample = np.array([[min_awards, min_dblp, letter - 64]])
+        
         closest_indices = kdt.query_radius(sample, r=np.inf)[0]
         filtered_indices.extend([index for index in closest_indices if
                                  combined_data[index][0] >= min_awards and
@@ -87,7 +93,7 @@ def filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters)
     filtered_scientists = [data[index][0] for index in filtered_indices]
     return filtered_scientists
 
-
+ 
 
 
 def extract_names(url): 
@@ -138,7 +144,7 @@ scientist_count = 0
 for initial, scientists in names_list.items():
     for name in scientists:
     
-        if scientist_count >= 25:
+        if scientist_count >= 100:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
@@ -146,7 +152,7 @@ for initial, scientists in names_list.items():
         dblp_url =  f'https://dblp.org/search/publ?q=author:{formatted_name}'
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
-        education_section = soup.find('span', {'id': re.compile(r'.*ducation.*')})
+        education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
         
         if education_section:
             try:
