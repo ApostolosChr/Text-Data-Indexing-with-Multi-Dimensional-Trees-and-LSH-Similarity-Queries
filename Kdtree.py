@@ -273,11 +273,13 @@ while True:
         matching_educations = [edu_info for name, edu_info in names_education if name == scientist1]
         if matching_educations:
             education1 = matching_educations[0]
+            education1 = re.sub(r'\[\D*\d+\]', '', education1)
             for j, similarity in similar_texts:
                 scientist2 = filtered_scientists[j]
                 matching_educations2 = [edu_info for name, edu_info in names_education if name == scientist2]
                 if matching_educations2:
                     education2 = matching_educations2[0]
+                    education2 = re.sub(r'\[\D*\d+\]', '', education2)
                     similarity_percentage = similarity * 100
                     highlighted_education1, highlighted_education2 = highlight_common_words(education1, education2)
                     if similarity_percentage >= threshold * 100:
