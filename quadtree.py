@@ -8,24 +8,25 @@ import nltk
 from pyqtree import Index
 from datasketch import MinHash, MinHashLSH
 from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords   #προβλήματα που πρέπει να φτίαξω 1ο να φιλτράρω με το επίθετο και όχι το όνομα, 2ο άμα υπάρχουν πάνω απο 2 όμοια κείμενα να τα εμφανίζω και τα 2 αλλά και τα ονόματα των επιστημόνων 3ο Να βάλω δίαστημα στο dblp 4o να ρυθμίσω έτσι ώστε άμα δεν βρίσκει κάτι να του εμφανίζω μήνυμα δεν βρέθηκε τίποτα και να συνεχίζει να τον ρωτάει και 5ο ένα πιο εύχρηστο τρόπο να λαμβάνει education, awards, DBLP,....
+from nltk.corpus import stopwords
+from collections import defaultdict
 nltk.download('punkt') 
-nltk.download('stopwords')  # Κατέβασε τα δεδομένα για τις stopwords
+nltk.download('stopwords')
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 
-'''Purpose: Extracts education information from a given URL.
-Input: URL of a scientist's Wikipedia page.
-Output: Returns the education information as a string or None if not found.'''
 def get_education_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
-    education_section = soup.find('span', {'id': re.compile(r'.*ducation.*')})
+    
+    # Αναζήτηση εκπαιδευτικής ενότητας με βάση τις συνώνυμες λέξεις
+    education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
 
     if education_section:
+        # Αν βρέθηκε η εκπαιδευτική ενότητα, προχωρήστε στην ανάκτηση των πληροφοριών
         try:
-            education_info = education_section.find_next('p').get_text()
+            education_info = re.sub(r'\[\D*\d+\]', '', education_section.find_next('p').get_text())
             return education_info.strip()
         except AttributeError:
             return None
@@ -33,13 +34,10 @@ def get_education_info(url):
     return None
 
 
-'''Purpose: Extracts the number of awards received from a given URL.
-Input: URL of a scientist's Wikipedia page.
-Output: Returns the number of awards as an integer or None if not found.'''
 def get_awards_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
-    honors_awards_section = soup.find('span', {'id': re.compile(r'.*Award.*')}) #πρέπει να βρώ πώς θα τα αναζητίσω τα awards 
+    honors_awards_section = soup.find(re.compile(r'(span|h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(honors|awards|Achievements|Recognition|Prizes)', re.IGNORECASE))
 
     if honors_awards_section:
         awards_list = honors_awards_section.find_next('ul')
@@ -63,28 +61,55 @@ def get_dblp_publications(url):
             pass
 
 
-def calculate_text_similarity(education_texts, user_query, threshold):
-    # Δημιουργία του TfidfVectorizer
+def highlight_common_words(text1, text2):
+    words1 = set(re.findall(r'\b\w+\b', text1.lower()))
+    words2 = set(re.findall(r'\b\w+\b', text2.lower()))
+    common_words = words1.intersection(words2)
+
+    for word in common_words:
+        text1 = re.sub(r'\b' + re.escape(word) + r'\b', f"\033[4m{word}\033[0m", text1, flags=re.IGNORECASE)
+        text2 = re.sub(r'\b' + re.escape(word) + r'\b', f"\033[4m{word}\033[0m", text2, flags=re.IGNORECASE)
+
+    return text1, text2
+
+
+def calculate_text_similarity(education_texts, threshold_percentage):
+    # Δημιουργία του TF-IDF vectorizer
     vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(education_texts)
+    
+    # Δημιουργία των MinHash signatures
+    minhash_list = []
+    for text in education_texts:
+        tokens = text.split()  # Διαχωρισμός του κειμένου σε λέξεις
+        minhash = MinHash()
+        for token in tokens:
+            minhash.update(token.encode('utf-8'))
+        minhash_list.append(minhash)
 
-    # Μετατροπή των κειμένων σε TF-IDF vectors
-    tfidf_matrix = vectorizer.fit_transform(education_texts + [user_query])
+    # Δημιουργία του LSH index
+    lsh = MinHashLSH(threshold=threshold_percentage / 100, num_perm=128)
+    for i, minhash in enumerate(minhash_list):
+        lsh.insert(i, minhash)
+    
+    # Επιλογή των πιθανών ζευγαριών κειμένων που αξίζει να εξεταστούν
+    candidate_pairs = set()
+    for i, minhash in enumerate(minhash_list):
+        results = lsh.query(minhash)
+        for j in results:
+            if i != j:  # Αποφυγή σύγκρισης κειμένων με τον εαυτό τους
+                candidate_pairs.add(tuple(sorted([i, j])))
+    
+    # Υπολογισμός της πραγματικής ομοιότητας για τα πιθανά ζευγάρια
+    similarity_mapping = defaultdict(list)
+    for pair in candidate_pairs:
+        i, j = pair
+        similarity = cosine_similarity(tfidf_matrix[i], tfidf_matrix[j])[0][0]
+        similarity_mapping[i].append((j, similarity))
+    
+    return similarity_mapping
 
-    # Υπολογισμός της ομοιότητας μεταξύ του ερωτήματος του χρήστη και των κειμένων εκπαίδευσης
-    similarity_scores = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1]).flatten()
 
-    max_similarity_indexes = np.where(similarity_scores >= threshold)[0]
-
-    scientist_education_mapping = {}
-    for idx in max_similarity_indexes:
-        scientist_education_mapping[filtered_scientists_final[idx]] = (similarity_scores[idx], education_texts[idx])
-
-    return scientist_education_mapping, similarity_scores
-
-
-
-'''Purpose: Extracts scientist names grouped by initial letters from a given URL.
-Output: Returns a dictionary where keys are initial letter codes and values are lists of scientist names.'''
 def extract_names(url): 
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -180,7 +205,7 @@ scientist_count = 0
 for initial, scientists in names_list.items():
     for name in scientists:
         
-        if scientist_count >= 7:
+        if scientist_count >= 4:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
@@ -188,26 +213,17 @@ for initial, scientists in names_list.items():
         dblp_url =  f'https://dblp.org/search/publ?q=author:{formatted_name}'
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
-        education_section = soup.find('span', {'id': re.compile(r'.*ducation.*')})
-        
-        if education_section:
-            try:
-                education_info = education_section.find_next('p').get_text()
-                names_education.append((name, education_info.strip()))      
-                
-            except AttributeError:
-                pass
-        
+        education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
+ 
 
-        education_info = get_education_info(scientist_url)
+        education_info = get_education_info(scientist_url) 
         awards_count = get_awards_info(scientist_url)
         dblp_publications = get_dblp_publications(dblp_url)
 
+        names_education.append((name, education_info))
 
         if education_info:
             data.append([name, awards_count, dblp_publications])
-
-
             scientist_name.append([name])
 
             print(f"Name: {name}")
@@ -245,7 +261,6 @@ data_array = np.array(data)
 
 awards_dblp_data = data_array[:, 1:3].astype(float)
 
-
 combined_data = np.concatenate((awards_dblp_data, codes_array), axis=1)
 combined_data = np.nan_to_num(combined_data, nan=0, posinf=0, neginf=0)
 combined_data = combined_data.astype(float)
@@ -265,7 +280,7 @@ max_dblp = np.nanmax(awards_dblp_data[:, 1])
 
 
 while True:
-    initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων στα λατινικά (π.χ., 'A-D'): ").upper()
+    initial_letters = input("\nΔώστε ένα διάστημα αρχικών γραμμάτων στα λατινικά (π.χ., 'A-D'): ").upper()
     
     if initial_letters.lower() == 'exit':
         break
@@ -301,25 +316,36 @@ while True:
         print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")
         continue
 
-    print("Οι επιστήμονες που πληρούν τα κριτήρια είναι:", filtered_scientists_final)
+    print("Οι επιστήμονες που πληρούν τα κριτήρια είναι:\n", filtered_scientists_final, "\n")
 
     # Φιλτράρισμα εκπαιδευτικών κειμένων και υπολογισμός ομοιότητας
-    filtered_education_texts = []
-    for scientist in filtered_scientists_final:
-        education_texts = [edu_info for name, edu_info in names_education if name == scientist]
-        filtered_education_texts.extend(education_texts)
+    filtered_education_texts = [edu_info for name, edu_info in names_education if name in filtered_scientists_final]
 
-    # Εισαγωγή του ερωτήματος από τον χρήστη
-    user_query = input("\nΔώσε το ερώτημα που θέλεις να αναζητήσεις στο κείμενο εκπαίδευσης: ")
-
-    threshold = 0.005  # Ορίστε το όριο ομοιότητας
-    result, similarity_scores = calculate_text_similarity(filtered_education_texts, user_query, threshold=threshold)
+    threshold = float(input("Εισαγάγετε το ποσοστό ομοιότητας που επιθυμείτε (ανάμεσα σε 0 και 1): "))
+    result = calculate_text_similarity(filtered_education_texts, threshold)
 
     if not result:
         print("Δεν βρέθηκαν αποτελέσματα πάνω από το όριο ομοιότητας.")
-    else:
-        print("Επιστήμονες με ποσοστό ομοιότητας πάνω από το όριο:")
-        for scientist, (similarity, education) in result.items():
-            print(f"Επιστήμονας: {scientist}")
-            print(f"Ποσοστό ομοιότητας: {similarity}")
-            print(f"Κείμενο εκπαίδευσης:\n{education}\n")
+        continue
+   
+    for i, similar_texts in result.items():
+        scientist1 = filtered_scientists_final[i]
+        matching_educations = [edu_info for name, edu_info in names_education if name == scientist1]
+        if matching_educations:
+            education1 = matching_educations[0]
+            education1 = re.sub(r'\[\D*\d+\]', '', education1)
+            for j, similarity in similar_texts:
+                scientist2 = filtered_scientists_final[j]
+                matching_educations2 = [edu_info for name, edu_info in names_education if name == scientist2]
+                if matching_educations2:
+                    education2 = matching_educations2[0]
+                    education2 = re.sub(r'\[\D*\d+\]', '', education2)
+                    similarity_percentage = similarity * 100
+                    highlighted_education1, highlighted_education2 = highlight_common_words(education1, education2)
+                    if similarity_percentage >= threshold * 100:
+                        print(f"\nΖεύγη Επιστημόνων με ποσοστό ομοιότητας εκπαίδευσης πάνω απο {threshold*100}%: {scientist1} με {scientist2}:")
+                        print(f"  - Ποσοστό Ομοιότητας εκπαίδευσης επιστημόνων: {similarity_percentage:.2f}%")
+                        print(f"  - Κείμενο Εκπαίδευσης Επιστήμονα {scientist1}:\n{highlighted_education1}\n")
+                        print(f"  - Κείμενο Εκπαίδευσης Επιστήμονα {scientist2}:\n{highlighted_education2}\n")
+                        print("-------------------------------------------------------------------------------------\n")
+    print("Δεν βρέθηκαν άλλα αποτελέσματα πάνω από το όριο ομοιότητας.")
