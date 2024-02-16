@@ -4,16 +4,17 @@ import re
 import time
 import numpy as np
 import nltk
-from rtree import index
-from datasketch import MinHash, MinHashLSH
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords   
-nltk.download('punkt') 
-nltk.download('stopwords')  # Κατέβασε τα δεδομένα για τις stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.neighbors import KDTree
+from datasketch import MinHash, MinHashLSH
 from collections import defaultdict
+nltk.download('punkt')
+nltk.download('stopwords')
+import time
+from rtree import index
 
+# Συνάρτηση για την ανάκτηση των πληροφοριών εκπαίδευσης
 def get_education_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -28,6 +29,7 @@ def get_education_info(url):
 
     return None
 
+# Συνάρτηση για την ανάκτηση των πληροφοριών βραβείων
 def get_awards_info(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -41,6 +43,7 @@ def get_awards_info(url):
 
     return None
 
+# Συνάρτηση για την ανάκτηση των δημοσιεύσεων από την DBLP
 def get_dblp_publications(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
@@ -105,42 +108,49 @@ def calculate_text_similarity(education_texts, threshold_percentage):
     return similarity_mapping
 
 
-def filter_by_rtree(rtree_index, min_awards, min_dblp):
-    filtered_scientists_names = []
-
-    overlap_bbox = (min_awards, min_dblp, max_awards, max_dblp)
-
-    # Use intersection query to get the matching scientists
-    for idx in rtree_index.intersection(overlap_bbox):
-        filtered_scientists_names.append(data[idx][0])
-
-    return filtered_scientists_names
-
-def filter_by_initial_letters(combined_data, initial_letters):
+# Συνάρτηση για το φιλτράρισμα των επιστημόνων βάσει κριτηρίων
+def filter_scientists(combined_data, rtree, min_awards, min_dblp, initial_letters):
     initial_range = initial_letters.upper()
-    filtered_scientists_initial = []
+    filtered_indices = []
+
+    # Υπολογισμός του max_x και max_y
+    max_x = max([x for x, _, _ in combined_data]) + 1
+    max_y = max([y for _, y, _ in combined_data]) + 1
 
     for letter in range(ord(initial_range[0]), ord(initial_range[-1]) + 1):
-        # combined_data: [awards, dblp, initial_letter_code]
-        scientists_with_letter = [data for data in combined_data if data[2] == float(letter - 64)]
-        filtered_scientists_initial.extend(scientists_with_letter)
+        min_x = min_awards
+        min_y = min_dblp
+        # Υπολογισμός του κωδικού για το γράμμα (A=1, B=2, κλπ)
+        letter_code = letter - ord('A') + 1
+        min_z = letter_code
+        max_z = letter_code + 1
+        
+        bbox = (min_x, min_y, min_z, max_x, max_y, max_z)
+        closest_indices = rtree.intersection(bbox)
+        
+        # Έλεγχος κάθε σημείου αν είναι εντός του παραλληλεπιπέδου και πληροί τα κριτήρια
+        for index in closest_indices:
+            x, y, z = combined_data[index]
+            if x >= min_awards and y >= min_dblp and min_z <= z < max_z:
+                filtered_indices.append(index)
 
-    return filtered_scientists_initial
+    filtered_scientists = [data[index][0] for index in filtered_indices]
+    return filtered_scientists
 
-def extract_names(url): 
+
+
+
+# Συνάρτηση για την ανάκτηση των ονομάτων των επιστημόνων ανά αρχικό γράμμα
+def extract_names(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.content, 'html.parser')
 
-    scientists_by_initial = {}  # Δημιουργία λεξικού για τους επιστήμονες ανά αρχικό γράμμα
+    scientists_by_initial = {}
     letter_codes = {chr(i): i - ord('A') + 1 for i in range(ord('A'), ord('Z') + 1)}
 
-    # Αναζήτηση του στοιχείου h2 με id="A"
     start_tag = soup.find('span', {'id': 'A'}).parent.parent
-
-    # Αναζήτηση του στοιχείου h2 με id="See_also"
     end_tag = soup.find('span', {'id': 'See_also'}).parent
 
-    # Βρίσκουμε τα επιστημονικά ονόματα από το "A" μέχρι το "Z"
     for tag in start_tag.find_all_next():
         if tag == end_tag:
             break
@@ -155,12 +165,10 @@ def extract_names(url):
                     name = scientist.text.split(' – ')[0]
                     scientists_list.append(name)
 
-                # Αντιστοίχιση αριθμών με τα αρχικά
                 initial_code = str(letter_codes[initial])
                 scientists_by_initial[initial_code] = scientists_list
       
     return scientists_by_initial
-
 
 # Αρχικό URL
 initial_url = 'https://en.wikipedia.org/wiki/List_of_computer_scientists'
@@ -170,43 +178,39 @@ codes_list = []
 names_list = extract_names(initial_url)
 data = []
 
-scientist_name = []
-
 scientist_count = 0
 
 for initial, scientists in names_list.items():
     for name in scientists:
-        
-        if scientist_count >= 4:
+        if scientist_count >= 3:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
         scientist_url = f'https://en.wikipedia.org/wiki/{formatted_name}'
         dblp_url =  f'https://dblp.org/search/publ?q=author:{formatted_name}'
+        
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
         education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
-        
+
         if education_section:
             try:
                 education_info = education_section.find_next('p').get_text()
-                names_education.append((name, education_info.strip()))      
+                names_education.append((name, education_info.strip()))
+
+                
                 
             except AttributeError:
                 pass
-        
 
+        
         education_info = get_education_info(scientist_url)
         awards_count = get_awards_info(scientist_url)
         dblp_publications = get_dblp_publications(dblp_url)
 
-
         if education_info:
             data.append([name, awards_count, dblp_publications])
-
-
-            scientist_name.append([name])
-
+           
             print(f"Name: {name}")
             print(f"Education: {education_info}")
             if awards_count:
@@ -239,52 +243,62 @@ for initial, scientists in names_list.items():
 
 codes_array = np.array(codes_list).reshape(-1, 1)
 data_array = np.array(data)
+
 awards_dblp_data = data_array[:, 1:3].astype(float)
-
-
 combined_data = np.concatenate((awards_dblp_data, codes_array), axis=1)
 combined_data = np.nan_to_num(combined_data, nan=0, posinf=0, neginf=0)
 combined_data = combined_data.astype(float)
-combined_data[np.isnan(combined_data)] = 0
+combined_data[np.isnan(combined_data)] = 0 
 
+print("Combined Data:")
+print(combined_data)
+p = index.Property()
+p.dimension = 3
+idx3d = index.Index(properties=p)
 
-print("Combined Data:\n", combined_data)
+for i, row in enumerate(combined_data):
+    x, y, z = row
+    idx3d.insert(i, (x, y, z, x, y, z))  # Μετατροπή των συντεταγμένων σε μορφή (minx, miny, minz, maxx, maxy, maxz)
 
-max_awards = np.nanmax(awards_dblp_data[:, 0])
-max_dblp = np.nanmax(awards_dblp_data[:, 1])
+# Δημιουργία ενός παραλληλεπιπέδου για την αναζήτηση
+min_x = np.min(combined_data[:, 0])
+max_x = np.max(combined_data[:, 0])
+min_y = np.min(combined_data[:, 1])
+max_y = np.max(combined_data[:, 1])
+min_z = np.min(combined_data[:, 2])
+max_z = np.max(combined_data[:, 2])
 
-rtree_index = index.Index()
-for idx, scientist_data in enumerate(data):
-    awards, dblp, _ = scientist_data[1], scientist_data[2], idx
-    
-    # Εάν οι τιμές είναι None, θέτουμε σε 0
-    if awards is None:
-        awards = 0
-    if dblp is None:
-        dblp = 0
-    
-    bounding_box = (awards, dblp, awards, dblp)  # Ορισμός ορθογωνίου επικάλυψης
-    rtree_index.insert(idx, bounding_box)  # Εισαγωγή στο R-tree index
+query_bbox = (min_x, min_y, min_z, max_x, max_y, max_z)
+results = list(idx3d.intersection(query_bbox))
 
-# Loop για το user input
 while True:
-    initial_letters = input("\nΔώσε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ")
+    initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων στα λατινικά (π.χ., 'A-D'): ").upper()
     
     if initial_letters.lower() == 'exit':
         break
+    
+    while not re.match(r'^[A-Z]-[A-Z]$', initial_letters):
+        print("Το διάστημα πρέπει να έχει τη μορφή 'A-D' στα λατινικά.")
+        initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ").upper()
 
-    # First of all, filter the scientists by the given initial letters:
-    filtered_scientists_initial = filter_by_initial_letters(combined_data, initial_letters)
+    min_awards = int(input("Δώστε το ελάχιστο αριθμό βραβείων: "))
+    min_dblp = int(input("Δώστε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
+    
+    start_time = time.time()
 
-    min_awards = int(input("Δώσε το ελάχιστο αριθμό βραβείων: "))
-    min_dblp = int(input("Δώσε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
+    filtered_scientists = filter_scientists(combined_data, idx3d, min_awards, min_dblp, initial_letters)
 
-    # Then, filter the scientists by the given min_awards and min_dblp:
-    filtered_scientists_final = filter_by_rtree(rtree_index, min_awards, min_dblp)
-    print("The filtered scientists are: ", filtered_scientists_final)
+    filtering_time = time.time() - start_time
+    print("Ο χρόνος που απαιτείται για το φιλτράρισμα με χρήση του KDTree:", filtering_time, "seconds")
+    
+    if not filtered_scientists:
+        print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")
+        continue
+    else:
+        print("Οι επιστήμονες που πληρούν τα κριτήρια είναι:")
+        print(filtered_scientists)
 
-
-    filtered_education_texts = [edu_info for name, edu_info in names_education if name in filtered_scientists_final]
+    filtered_education_texts = [edu_info for name, edu_info in names_education if name in filtered_scientists]
 
     threshold = float(input("Εισαγάγετε το ποσοστό ομοιότητας που επιθυμείτε (ανάμεσα σε 0 και 1): "))
     result = calculate_text_similarity(filtered_education_texts, threshold)
@@ -294,13 +308,13 @@ while True:
         continue
    
     for i, similar_texts in result.items():
-        scientist1 = filtered_scientists_final[i]
+        scientist1 = filtered_scientists[i]
         matching_educations = [edu_info for name, edu_info in names_education if name == scientist1]
         if matching_educations:
             education1 = matching_educations[0]
             education1 = re.sub(r'\[\D*\d+\]', '', education1)
             for j, similarity in similar_texts:
-                scientist2 = filtered_scientists_final[j]
+                scientist2 = filtered_scientists[j]
                 matching_educations2 = [edu_info for name, edu_info in names_education if name == scientist2]
                 if matching_educations2:
                     education2 = matching_educations2[0]
