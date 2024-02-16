@@ -289,7 +289,7 @@ while True:
     filtered_scientists = filter_scientists(combined_data, idx3d, min_awards, min_dblp, initial_letters)
 
     filtering_time = time.time() - start_time
-    print("Ο χρόνος που απαιτείται για το φιλτράρισμα με χρήση του KDTree:", filtering_time, "seconds")
+    print("Ο χρόνος που απαιτείται για το φιλτράρισμα με χρήση του RTree:", filtering_time, "seconds")
     
     if not filtered_scientists:
         print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")
