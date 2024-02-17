@@ -177,7 +177,7 @@ scientist_count = 0
 
 for initial, scientists in names_list.items():
     for name in scientists:
-        if scientist_count >= 3:
+        if scientist_count >= 30:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
@@ -187,12 +187,21 @@ for initial, scientists in names_list.items():
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
         education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
-        
+        if education_section:
+            try:
+                education_info = education_section.find_next('p').get_text()
+                names_education.append((name, education_info.strip()))
+
+                
+                
+            except AttributeError:
+                pass
+
         education_info = get_education_info(scientist_url)
         awards_count = get_awards_info(scientist_url)
         dblp_publications = get_dblp_publications(dblp_url)
 
-        names_education.append((name, education_info.strip()))
+        
 
         if education_info:
             data.append([name, awards_count, dblp_publications])
