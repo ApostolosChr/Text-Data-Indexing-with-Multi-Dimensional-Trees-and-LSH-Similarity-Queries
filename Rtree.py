@@ -6,7 +6,6 @@ import numpy as np
 import nltk
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.neighbors import KDTree
 from datasketch import MinHash, MinHashLSH
 from collections import defaultdict
 nltk.download('punkt')
@@ -55,8 +54,6 @@ def get_dblp_publications(url):
             return matches
         except ValueError:
             pass
-
-
 
 
 def highlight_common_words(text1, text2):
@@ -109,13 +106,13 @@ def calculate_text_similarity(education_texts, threshold_percentage):
 
 
 # Συνάρτηση για το φιλτράρισμα των επιστημόνων βάσει κριτηρίων
-def filter_scientists(combined_data, rtree, min_awards, min_dblp, initial_letters):
+def filter_scientists(combined_data, rtree, min_awards, min_dblp, max_user_dblp, initial_letters):
     initial_range = initial_letters.upper()
     filtered_indices = []
 
     # Υπολογισμός του max_x και max_y
     max_x = max([x for x, _, _ in combined_data]) + 1
-    max_y = max([y for _, y, _ in combined_data]) + 1
+    max_y = max_user_dblp
 
     for letter in range(ord(initial_range[0]), ord(initial_range[-1]) + 1):
         min_x = min_awards
@@ -136,8 +133,6 @@ def filter_scientists(combined_data, rtree, min_awards, min_dblp, initial_letter
 
     filtered_scientists = [data[index][0] for index in filtered_indices]
     return filtered_scientists
-
-
 
 
 # Συνάρτηση για την ανάκτηση των ονομάτων των επιστημόνων ανά αρχικό γράμμα
@@ -192,21 +187,12 @@ for initial, scientists in names_list.items():
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
         education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
-
-        if education_section:
-            try:
-                education_info = education_section.find_next('p').get_text()
-                names_education.append((name, education_info.strip()))
-
-                
-                
-            except AttributeError:
-                pass
-
         
         education_info = get_education_info(scientist_url)
         awards_count = get_awards_info(scientist_url)
         dblp_publications = get_dblp_publications(dblp_url)
+
+        names_education.append((name, education_info.strip()))
 
         if education_info:
             data.append([name, awards_count, dblp_publications])
@@ -252,6 +238,7 @@ combined_data[np.isnan(combined_data)] = 0
 
 print("Combined Data:")
 print(combined_data)
+
 p = index.Property()
 p.dimension = 3
 idx3d = index.Index(properties=p)
@@ -282,11 +269,26 @@ while True:
         initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ").upper()
 
     min_awards = int(input("Δώστε το ελάχιστο αριθμό βραβείων: "))
-    min_dblp = int(input("Δώστε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
+    
+    while True:
+        input_dblp = input("Δώσε ένα εύρος τιμών για τον αριθμό δημοσιέυσεων στο DBLP (π.χ. 65 - 3456): ")
+
+        # Check if the input matches the desired pattern for a range of numbers
+        match = re.match(r'^\s*(\d+)\s*-\s*(\d+)\s*$', input_dblp)
+
+        if match:
+            min_str, max_str = match.groups()
+
+            # Convert the strings to integers
+            min_dblp = int(min_str)
+            max_user_dblp = int(max_str)
+            break
+        else:
+            print("Το διάστημα πρέπει να είναι της μορφής 'Integer - Integer'. Παρακαλώ δοκιμάστε ξανά.")
     
     start_time = time.time()
 
-    filtered_scientists = filter_scientists(combined_data, idx3d, min_awards, min_dblp, initial_letters)
+    filtered_scientists = filter_scientists(combined_data, idx3d, min_awards, min_dblp, max_user_dblp, initial_letters)
 
     filtering_time = time.time() - start_time
     print("Ο χρόνος που απαιτείται για το φιλτράρισμα με χρήση του RTree:", filtering_time, "seconds")
