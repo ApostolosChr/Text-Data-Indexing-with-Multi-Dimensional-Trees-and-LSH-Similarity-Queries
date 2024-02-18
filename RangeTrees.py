@@ -193,8 +193,8 @@ def filter_scientists(combined_data, range_tree, min_awards, min_dblp, initial_l
                     break
             if row_index is not None:
             # Προσθήκη της γραμμής στη λίστα filtered_scientists
-             filtered_scientists.append(combined_data[row_index])
-        return filtered_scientists
+             filtered_scientists.append(data[row_index][0])
+    return filtered_scientists
 
 
 def extract_names(url):
@@ -338,7 +338,8 @@ while True:
         print("Οι επιστήμονες που πληρούν τα κριτήρια είναι:")
         print(filtered_scientists)
 
-    filtered_education_texts = [edu_info for name, edu_info in names_education if name in filtered_scientists]
+    filtered_education_texts = [edu_info for name, edu_info in names_education if any(name in scientist for scientist in filtered_scientists)]
+
 
     threshold = float(input("Εισαγάγετε το ποσοστό ομοιότητας που επιθυμείτε (ανάμεσα σε 0 και 1): "))
     result = calculate_text_similarity(filtered_education_texts, threshold)
