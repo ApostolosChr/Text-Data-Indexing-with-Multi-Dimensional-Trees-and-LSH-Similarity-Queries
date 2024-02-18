@@ -4,6 +4,7 @@ import re
 import time
 import numpy as np
 import nltk
+import timeit
 # https://pypi.org/project/Pyqtree/
 from pyqtree import Index
 from datasketch import MinHash, MinHashLSH
@@ -157,7 +158,7 @@ def filter_by_initial_letters(combined_data, initial_letters):
     return filtered_scientists_initial
 
 
-def filter_by_quadtree(qtree, min_awards, min_dblp):
+def filter_by_quadtree(qtree, min_awards, min_dblp, max_user_dblp):
     filtered_scientists_names = []
 
     '''
@@ -175,10 +176,10 @@ def filter_by_quadtree(qtree, min_awards, min_dblp):
     Εμάς, είτε min_dblp > max_dblp ή min_awards > max_awards, πρέπει να μην επιστρέφεται τίποτα
     '''
 
-    if min_dblp > max_dblp or min_awards > max_awards:
+    if min_dblp > max_user_dblp or min_awards > max_awards:
         return filtered_scientists_names
 
-    overlap_bbox = (min_awards, min_dblp, max_awards, max_dblp)
+    overlap_bbox = (min_awards, min_dblp, max_awards, max_user_dblp)
     filtered_scientists_quadtree = qtree.intersect(overlap_bbox)
 
     # Extract indices from the 4th column of filtered_scientists_quadtree
@@ -205,7 +206,7 @@ scientist_count = 0
 for initial, scientists in names_list.items():
     for name in scientists:
         
-        if scientist_count >= 4:
+        if scientist_count >= 7:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
@@ -307,10 +308,26 @@ while True:
 
 
     min_awards = int(input("Δώσε το ελάχιστο αριθμό βραβείων: "))
-    min_dblp = int(input("Δώσε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
+
+    while True:
+        input_dblp = input("Δώσε ένα εύρος τιμών για τον αριθμό δημοσιέυσεων στο DBLP (π.χ. 65 - 3456): ")
+
+        # Check if the input matches the desired pattern for a range of numbers
+        match = re.match(r'^\s*(\d+)\s*-\s*(\d+)\s*$', input_dblp)
+
+        if match:
+            min_str, max_str = match.groups()
+
+            # Convert the strings to integers
+            min_dblp = int(min_str)
+            max_user_dblp = int(max_str)
+            break
+        else:
+            print("Το διάστημα πρέπει να είναι της μορφής 'Integer - Integer'. Παρακαλώ δοκιμάστε ξανά.")
+
 
     # Then, filter the scientists by the given min_awards and min_dblp:
-    filtered_scientists_final = filter_by_quadtree(qtree, min_awards, min_dblp)
+    filtered_scientists_final = filter_by_quadtree(qtree, min_awards, min_dblp, max_user_dblp)
 
     if not filtered_scientists_final:
         print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")

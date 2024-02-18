@@ -55,8 +55,6 @@ def get_dblp_publications(url):
             pass
 
 
-
-
 def highlight_common_words(text1, text2):
     words1 = set(re.findall(r'\b\w+\b', text1.lower()))
     words2 = set(re.findall(r'\b\w+\b', text2.lower()))
@@ -107,21 +105,23 @@ def calculate_text_similarity(education_texts, threshold_percentage):
 
 
 # Συνάρτηση για το φιλτράρισμα των επιστημόνων βάσει κριτηρίων
-def filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters):
+def filter_scientists(combined_data, kdt, min_awards, min_dblp, max_user_dblp, initial_letters):
     initial_range = initial_letters.upper()
     filtered_indices = []
 
     for letter in range(ord(initial_range[0]), ord(initial_range[-1]) + 1):
         sample = np.array([[min_awards, min_dblp, letter - 64]])
-        
+
         closest_indices = kdt.query_radius(sample, r=np.inf)[0]
         filtered_indices.extend([index for index in closest_indices if
-                                 combined_data[index][0] >= min_awards and
-                                 combined_data[index][1] >= min_dblp and
-                                 combined_data[index][2] == letter - 64])
+                                combined_data[index][0] >= min_awards and
+                                combined_data[index][1] >= min_dblp and
+                                combined_data[index][1] <= max_user_dblp and
+                                combined_data[index][2] == letter - 64])
 
     filtered_scientists = [data[index][0] for index in filtered_indices]
     return filtered_scientists
+
 
 # Συνάρτηση για την ανάκτηση των ονομάτων των επιστημόνων ανά αρχικό γράμμα
 def extract_names(url):
@@ -165,7 +165,7 @@ scientist_count = 0
 
 for initial, scientists in names_list.items():
     for name in scientists:
-        if scientist_count >= 4:
+        if scientist_count >= 30:
             break
             
         formatted_name = re.sub(r'\s+', '_', name.strip())
@@ -175,7 +175,6 @@ for initial, scientists in names_list.items():
         response = requests.get(scientist_url)
         soup = BeautifulSoup(response.content, 'html.parser')
         education_section = soup.find(re.compile(r'(h[1-6]|p|div|section)', re.IGNORECASE), string=re.compile(r'(education|training|learning|instruction|biography)', re.IGNORECASE))
-
         if education_section:
             try:
                 education_info = education_section.find_next('p').get_text()
@@ -186,10 +185,12 @@ for initial, scientists in names_list.items():
             except AttributeError:
                 pass
 
-        
+
         education_info = get_education_info(scientist_url)
         awards_count = get_awards_info(scientist_url)
         dblp_publications = get_dblp_publications(dblp_url)
+
+        
 
         if education_info:
             data.append([name, awards_count, dblp_publications])
@@ -249,9 +250,24 @@ while True:
         initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ").upper()
 
     min_awards = int(input("Δώστε το ελάχιστο αριθμό βραβείων: "))
-    min_dblp = int(input("Δώστε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
+        
+    while True:
+        input_dblp = input("Δώσε ένα εύρος τιμών για τον αριθμό δημοσιέυσεων στο DBLP (π.χ. 65 - 3456): ")
+
+        # Check if the input matches the desired pattern for a range of numbers
+        match = re.match(r'^\s*(\d+)\s*-\s*(\d+)\s*$', input_dblp)
+
+        if match:
+            min_str, max_str = match.groups()
+
+            # Convert the strings to integers
+            min_dblp = int(min_str)
+            max_user_dblp = int(max_str)
+            break
+        else:
+            print("Το διάστημα πρέπει να είναι της μορφής 'Integer - Integer'. Παρακαλώ δοκιμάστε ξανά.")
     
-    filtered_scientists = filter_scientists(combined_data, kdt, min_awards, min_dblp, initial_letters)
+    filtered_scientists = filter_scientists(combined_data, kdt, min_awards, min_dblp, max_user_dblp, initial_letters)
     if not filtered_scientists:
         print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")
         continue
@@ -283,8 +299,8 @@ while True:
                     similarity_percentage = similarity * 100
                     highlighted_education1, highlighted_education2 = highlight_common_words(education1, education2)
                     if similarity_percentage >= threshold * 100:
-                        print(f"Ζεύγη Επιστημόνων με ποσοστό ομοιότητας εκπέδευσης πάνω απο {threshold*100}%: {scientist1} με {scientist2}:")
-                        print(f"  - Ποσοστό Ομοιότητας εκπέδευσης επιστημόνων: {similarity_percentage:.2f}%")
+                        print(f"Ζεύγη Επιστημόνων με ποσοστό ομοιότητας εκπαίδευσης πάνω απο {threshold*100}%: {scientist1} με {scientist2}:")
+                        print(f"  - Ποσοστό Ομοιότητας εκπαίδευσης επιστημόνων: {similarity_percentage:.2f}%")
                         print(f"  - Κείμενο Εκπαίδευσης Επιστήμονα {scientist1}:\n{highlighted_education1}\n")
                         print(f"  - Κείμενο Εκπαίδευσης Επιστήμονα {scientist2}:\n{highlighted_education2}\n")
                         print("-------------------------------------------------------------------------------------\n")
