@@ -162,7 +162,7 @@ def calculate_text_similarity(education_texts, threshold_percentage):
 
 
 #sxolio dikom
-def filter_scientists(combined_data, range_tree, min_awards, min_dblp, initial_letters):
+def filter_scientists(combined_data, range_tree, min_awards, min_dblp, max_user_dblp, initial_letters):
     initial_range = initial_letters.upper()
     filtered_scientists = []
 
@@ -171,7 +171,7 @@ def filter_scientists(combined_data, range_tree, min_awards, min_dblp, initial_l
 
     # Find maximum values for awards and DBLP
     max_awards = max(combined_data, key=lambda x: x[0])[0]
-    max_dblp = max(combined_data, key=lambda x: x[1])[1]
+    max_dblp = max_user_dblp
 
     for initial_index in range(initial_indices[0], initial_indices[-1] + 1):
         # Construct the query point
@@ -327,9 +327,23 @@ while True:
         initial_letters = input("Δώστε ένα διάστημα αρχικών γραμμάτων (π.χ., 'A-D'): ").upper()
 
     min_awards = int(input("Δώστε το ελάχιστο αριθμό βραβείων: "))
-    min_dblp = int(input("Δώστε το ελάχιστο αριθμό δημοσιεύσεων στο DBLP: "))
+    while True:
+        input_dblp = input("Δώσε ένα εύρος τιμών για τον αριθμό δημοσιέυσεων στο DBLP (π.χ. 65 - 3456): ")
+
+        # Check if the input matches the desired pattern for a range of numbers
+        match = re.match(r'^\s*(\d+)\s*-\s*(\d+)\s*$', input_dblp)
+
+        if match:
+            min_str, max_str = match.groups()
+
+            # Convert the strings to integers
+            min_dblp = int(min_str)
+            max_user_dblp = int(max_str)
+            break
+        else:
+            print("Το διάστημα πρέπει να είναι της μορφής 'Integer - Integer'. Παρακαλώ δοκιμάστε ξανά.")
     
-    filtered_scientists = filter_scientists(combined_data, range_tree, min_awards, min_dblp, initial_letters)
+    filtered_scientists = filter_scientists(combined_data, range_tree, min_awards, min_dblp, max_user_dblp, initial_letters)
     print("Filtered Scientists:", filtered_scientists)
     if not filtered_scientists:
         print("Δεν βρήκαμε επιστήμονα με αυτά τα κριτήρια.")
