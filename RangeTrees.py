@@ -52,13 +52,13 @@ def get_dblp_publications(url):
             return matches
         except ValueError:
             pass
-#sxolio dikom
+#Δημιουργια κλάσης Node
 class Node:
     def __init__(self, point, left=None, right=None):
         self.point = point
         self.left = left
         self.right = right
-#sxolio dikom
+#Δημιουργια κλάσης RangeTree3D
 class RangeTree3D:
     def __init__(self):
         self.root = None
@@ -96,7 +96,7 @@ class RangeTree3D:
             return
 
         axis = depth % 3
-
+        
         if min_point[axis] <= node.point[axis] <= max_point[axis]:
             if all(min_point[d] <= node.point[d] <= max_point[d] for d in range(3)):
                 result.append(node.point)
@@ -161,29 +161,29 @@ def calculate_text_similarity(education_texts, threshold_percentage):
     return similarity_mapping
 
 
-#sxolio dikom
+#Τροποποίηση της μεθόδου filter_sientists
 def filter_scientists(combined_data, range_tree, min_awards, min_dblp, max_user_dblp, initial_letters):
     initial_range = initial_letters.upper()
     filtered_scientists = []
 
-    # Convert initial letters to corresponding indices
+    # Μετατροπή initial letters σε αντίστοιχα indices
     initial_indices = [ord(char) - ord('A') + 1 for char in initial_range if 'A' <= char <= 'Z']
 
-    # Find maximum values for awards and DBLP
+    # Βρισκει maximum values για awards και DBLP
     max_awards = max(combined_data, key=lambda x: x[0])[0]
     max_dblp = max_user_dblp
 
     for initial_index in range(initial_indices[0], initial_indices[-1] + 1):
-        # Construct the query point
+        # Δημιουργει  query point
         query_point = [min_awards, min_dblp, initial_index]
 
-        # Define the upper bound of the search range based on the maximum values
+        
         search_upper_bound = [max_awards, max_dblp, initial_index]
 
-        # Search in the range tree
+       
         search_result = range_tree.search(query_point, search_upper_bound)
 
-        # Add filtered scientists to the list
+       
         for point in search_result:
         # Εύρεση της γραμμής που αντιστοιχεί στο σημείο point
             row_index = None
